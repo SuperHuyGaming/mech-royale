@@ -1,17 +1,11 @@
-# Dockerfile for GMUNVIS Mech Royale Submission
-# Target platform: linux/amd64
-# Runtime sandbox: 1 CPU, 512 MB RAM, read-only root, uid 65534, /tmp tmpfs 64MB
+# Match brain: giddygiddyboy-mech-royale (MIT License, see giddy/LICENSE), built as a static binary.
+FROM golang:1.26.1-bookworm@sha256:ab3d6955bbc813a0f3fdf220c1d817dd89c0b3f283777db8ece4a32fe7858edd AS build
+WORKDIR /src
+COPY giddy/go.mod ./
+COPY giddy/mech ./mech
+COPY giddy/cmd/bot ./cmd/bot
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /mechbot ./cmd/bot
 
-FROM python:3.13-slim
-
-WORKDIR /bot
-
-# Copy required bot files and protocol wrapper into the container
-COPY mechfight.py .
-COPY bot.py .
-
-# Ensure permissions allow execution by unprivileged uid 65534 (nobody)
-RUN chmod -R 755 /bot
-
-# Unbuffered stdout is mandatory for protocol lockstep
-ENTRYPOINT ["python3", "-u", "/bot/bot.py"]
+FROM scratch
+COPY --from=build /mechbot /mechbot
+ENTRYPOINT ["/mechbot"]
