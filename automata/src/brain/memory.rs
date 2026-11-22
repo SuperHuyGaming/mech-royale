@@ -213,16 +213,35 @@ impl Memory {
         for ev in &obs.events {
             match ev {
                 Event::Damaged(d) => {
-                    if d.weapon == "zone" || d.by.is_none() {
+                    if d.weapon == "zone" {
                         continue;
                     }
                     self.last_damage_t = t;
-                    let by = d.by.unwrap_or(-1);
                     let mut fresh = false;
-                    if let Some(tr) = self.tracks.iter_mut().find(|x| x.id == by) {
-                        tr.dmg_to_us += d.amount.max(0.0);
-                        tr.last_dmg_t = t;
-                        fresh = t - tr.last_seen < 0.3;
+                    if let Some(by) = d.by {
+                        if let Some(tr) = self.tracks.iter_mut().find(|x| x.id == by) {
+                            tr.dmg_to_us += d.amount.max(0.0);
+                            tr.last_dmg_t = t;
+                            fresh = t - tr.last_seen < 0.3;
+                        }
+                    } else if let Some(b) = d.bearing {
+                        // Match incoming bearing against visible tracks
+                        let mut best_idx = None;
+                        let mut best_diff = 0.35f64; // ~20 degrees
+                        for (idx, tr) in self.tracks.iter().enumerate() {
+                            let to_tr = (tr.pos[1] - me.pos[1]).atan2(tr.pos[0] - me.pos[0]);
+                            let diff = super::math::adiff(b, to_tr).abs();
+                            if diff < best_diff {
+                                best_diff = diff;
+                                best_idx = Some(idx);
+                            }
+                        }
+                        if let Some(idx) = best_idx {
+                            let tr = &mut self.tracks[idx];
+                            tr.dmg_to_us += d.amount.max(0.0);
+                            tr.last_dmg_t = t;
+                            fresh = t - tr.last_seen < 0.5;
+                        }
                     }
                     if !fresh {
                         if let Some(b) = d.bearing {
