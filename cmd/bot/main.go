@@ -78,7 +78,7 @@ func main() {
 					w = mech.FlatWorld()
 				}
 				brain = mech.NewBrain(&h, w)
-				send(map[string]string{"type": "ready", "name": "GMUNVIS"})
+				send(map[string]string{"type": "ready", "name": "rogue_agi"})
 			case "obs":
 				latest = raw
 			case "end":

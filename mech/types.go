@@ -288,6 +288,7 @@ type Obs struct {
 	Cubes       []Item     `json:"cubes"`
 	Pickups     []Item     `json:"pickups"`
 	Sounds      []Sound    `json:"sounds"`
+	Beams       []Beam     `json:"beams"`
 	Events      []Event    `json:"events"`
 	Drops       []Drop     `json:"drops"`
 	Zone        Zone       `json:"zone"`
@@ -309,4 +310,10 @@ type Action struct {
 
 type Pilot interface {
 	Act(o *Obs) Action
+}
+
+type Beam struct {
+	By   int         `json:"by"`
+	Kind string      `json:"kind"`
+	Path [][]float64 `json:"path"`
 }
