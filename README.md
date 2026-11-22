@@ -1,3 +1,3 @@
 # GMUNVIS Mech Royale bot
 
-The submitted image (`Dockerfile`) runs the Rust bot in `automata/`. An earlier Go bot is in `giddy/` (build with `docker build -f giddy/Dockerfile.giddy .`), and our first Python bot is in `legacy/`.
+The submitted image (`Dockerfile`) runs our own stealth survival Python bot in `own/` (`GMUNVIS-Apex`). Reference and legacy bots are kept in `automata/`, `giddy/`, and `legacy/`.
