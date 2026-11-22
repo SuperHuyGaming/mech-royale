@@ -221,7 +221,9 @@ impl Brain {
             self.order.halted = true;
         }
         if let Some(of) = &obs.offer {
-            act.pick = Some(self.pick_upgrade(of));
+            if let Some(pick) = self.pick_upgrade(of, obs) {
+                act.pick = Some(pick);
+            }
         }
         self.decide(obs, world, nav);
         self.laser_pre(obs, world, nav);
@@ -277,13 +279,23 @@ impl Brain {
         self.unstick_count
     }
 
-    fn pick_upgrade(&self, of: &Offer) -> i64 {
-        for id in &self.p.upgrade_priority {
-            if let Some(i) = of.choices.iter().take(3).position(|c| &c.id == id) {
-                return i as i64;
+    fn pick_upgrade(&self, of: &Offer, obs: &Obs) -> Option<i64> {
+        let p = &self.p;
+        if p.survive2_on >= 1.0 {
+            let near_threat = self.mem.tracks.iter().any(|tr| {
+                tr.kind == crate::proto::ActorKind::Mech && obs.t - tr.last_seen < 1.5 && (tr.pos[0] - obs.me.pos[0]).hypot(tr.pos[1] - obs.me.pos[1]) < p.survive2_upgrade_safe_r
+            });
+            let urgent = of.expires > 0.0 && (of.expires - obs.t) < 0.6;
+            if near_threat && !urgent {
+                return None;
             }
         }
-        0
+        for id in &self.p.upgrade_priority {
+            if let Some(i) = of.choices.iter().take(3).position(|c| &c.id == id) {
+                return Some(i as i64);
+            }
+        }
+        Some(0)
     }
 
     pub(crate) fn pref_of(&self, k: WeaponKind) -> f64 {

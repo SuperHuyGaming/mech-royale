@@ -201,6 +201,23 @@ impl Brain {
                 }
             }
         }
+        if p.survive2_on >= 1.0 {
+            let disengage_hp = p.survive2_disengage_hp.clamp(0.35, 0.65);
+            let recent_dmg = t - self.mem.last_damage_t < 5.5;
+            let is_endgame = (obs.alive <= 3) || (obs.zone.next_radius <= 25.0);
+            if is_endgame {
+                if hpf > 0.25 {
+                    want_retreat = false;
+                }
+            } else if was {
+                want_retreat = hpf < p.retreat_exit_hp || recent_dmg;
+            } else if hpf < disengage_hp || (recent_dmg && hpf < p.retreat_exit_hp) {
+                want_retreat = true;
+            }
+            if want_retreat {
+                self.pursuit = (-1, t);
+            }
+        }
 
         if held && (n_att >= 1 || near_mech < 120.0 || near_mem < 100.0 || t - self.mem.last_damage_t < 3.0 || (was && near_mem < 170.0)) {
             want_retreat = true;
@@ -347,6 +364,11 @@ impl Brain {
             if !self.ffa_allow(obs, tr, attacker, d) {
                 continue;
             }
+            if p.survive2_on >= 1.0 && obs.alive > 3 && z.next_radius > 30.0 {
+                if !attacker && d > p.ffa_defend_range {
+                    continue;
+                }
+            }
             if d > 60.0 {
                 if dist2v(tp, zi.cur_c) > zi.cur_r - 2.0 {
                     continue;
@@ -368,6 +390,9 @@ impl Brain {
             }
             if t - tr.last_seen < p.fresh_s {
                 s += 30.0;
+            }
+            if p.survive2_on >= 1.0 && (obs.alive <= 3 || z.next_radius <= 30.0) {
+                s += 250.0 * (1.0 - frac(tr.hp, tr.max_hp));
             }
             if best.map_or(true, |b| s > b.0) {
                 best = Some((s, tr));
