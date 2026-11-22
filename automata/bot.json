@@ -14,11 +14,11 @@
   "gear_site_r": 130,
   "harvest_site_s": 40,
   "gear_easy_range": 55,
-  "gear_cube_fight_r": 25,
+  "gear_cube_fight_r": 20,
   "gear_grab_r": 40,
   "gear_pursuit_s": 12,
-  "retreat_hp": 0.5,
+  "retreat_hp": 0.55,
   "rest_on": true,
-  "zone_margin": 28,
-  "ffa_early_quiet_range": 55
+  "zone_margin": 35,
+  "ffa_early_quiet_range": 75
 }
