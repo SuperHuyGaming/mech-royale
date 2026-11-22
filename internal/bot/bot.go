@@ -177,7 +177,7 @@ type Params struct {
 
 func DefaultParams() Params {
 	return Params{
-		Name:          "apex-go",
+		Name:          "GMUNVIS",
 		EngageRatio:   0.70,
 		DisengageRat:  0.30,
 		RetreatHP:     0.20,

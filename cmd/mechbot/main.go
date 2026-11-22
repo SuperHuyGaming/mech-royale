@@ -136,7 +136,7 @@ func main() {
 					logf("bad hello again: %v", err2)
 				}
 			}
-			name := "apex-go"
+			name := "GMUNVIS"
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
