@@ -1,0 +1,6 @@
+target/
+__pycache__/
+*.pyc
+eval_candidate.py
+arena_eval_candidate.py
+kit/

@@ -563,6 +563,18 @@ impl Brain {
                     s -= p.w_npc * (p.npc_avoid - d) * 0.2 + p.w_npc * (dist(*q, pos) - d).max(0.0);
                 }
             }
+            // Anti-lightning >45m forcefield: penalize moving within lethal lightning range
+            for th in &threats {
+                if th.lightning {
+                    let d = dist(th.eye, end);
+                    if d < 48.0 {
+                        s -= 20.0 * (48.0 - d);
+                        if d < dist(th.eye, pos) {
+                            s -= 40.0;
+                        }
+                    }
+                }
+            }
             s -= p.w_proj * self.incoming_cost(c, &shots, &blasts, radius, height);
             if p.w_antilead > 0.0 {
                 s -= p.w_antilead * super::aimz::antilead(c.pts.as_slice(), DT, pos, me.vel, threats.iter().filter(|th| th.gun && !th.ghost && th.los_now).map(|th| (th.eye, th.aim_yaw)), radius + self.cfg.projectile.gun_radius, self.cfg.weapons.gun.speed.max(1.0), p.antilead_lat, p.antilead_sigma, self.cfg.weapons.gun.damage);
@@ -612,7 +624,12 @@ impl Brain {
                             let d = dist(th.eye, cpt);
                             let to_us = (cpt[1] - th.eye[1]).atan2(cpt[0] - th.eye[0]);
                             let al = (1.0 - adiff(th.aim_yaw, to_us).abs()).clamp(0.0, 1.0);
-                            e += 0.5 * self.threat_dps(th, d) * (0.4 + 0.6 * al);
+                            let mut dps = self.threat_dps(th, d) * (0.4 + 0.6 * al);
+                            // Rear vulnerability cone penalty: hits to rear 180 deg arc deal 1.5x damage
+                            if adiff(to_us, fc.aim[0]).abs() > std::f64::consts::FRAC_PI_2 {
+                                dps *= 1.5;
+                            }
+                            e += 0.5 * dps;
                         }
                     }
                     cost += p.w_expo * w_mode * e * horizon;

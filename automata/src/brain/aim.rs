@@ -70,6 +70,10 @@ impl Brain {
         if let Some(a) = self.threat_aim(obs) {
             return a;
         }
+        if self.mode == Mode::Retreat && self.last_dir[0].hypot(self.last_dir[1]) > 0.1 {
+            let move_dir = self.last_dir[1].atan2(self.last_dir[0]);
+            return [wrap(move_dir + std::f64::consts::PI), 0.0];
+        }
         let base = if self.last_dir[0].hypot(self.last_dir[1]) > 0.1 { self.last_dir[1].atan2(self.last_dir[0]) } else { obs.me.aim[0] };
         let ph = 2.0 * std::f64::consts::PI * t / self.p.scan_period.max(0.5);
         [wrap(base + self.p.scan_amp * ph.sin()), 0.0]
@@ -397,7 +401,8 @@ impl Brain {
                 if w.ammo <= 0.0 && w.reload <= 0.0 {
                     out.reload = true;
                 }
-                if !ok && w.reload <= 0.0 && w.ammo <= w.stats.mag * p.reload_frac && w.ammo < w.stats.mag {
+                let safe_reload = !ok || self.mode == Mode::Retreat || self.mem.tracks.iter().all(|tr| tr.kind != ActorKind::Mech || t - tr.last_seen > 1.0 || dist(tr.pos_at(t), me.pos) > 90.0);
+                if safe_reload && w.reload <= 0.0 && w.ammo <= w.stats.mag * p.reload_frac && w.ammo < w.stats.mag {
                     out.reload = true;
                 }
                 if w.ammo > 0.0 && w.reload <= 0.7 {
@@ -417,7 +422,7 @@ impl Brain {
                 out.armed = true;
             }
             if !laser_charging {
-                if allow && laser_in && w.cooldown <= 0.1 {
+                if allow && laser_in && w.cooldown <= 0.1 && self.mode != Mode::Retreat {
                     out.fire[i] = true;
                 }
             } else {

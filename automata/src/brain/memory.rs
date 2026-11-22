@@ -21,6 +21,7 @@ pub struct Track {
     pub last_seen: f64,
     pub dmg_to_us: f64,
     pub last_dmg_t: f64,
+    pub laser_cd_until: f64,
 }
 
 impl Track {
@@ -206,7 +207,16 @@ impl Memory {
                     last_seen: t,
                     dmg_to_us: 0.0,
                     last_dmg_t: -1e9,
+                    laser_cd_until: 0.0,
                 });
+            }
+        }
+
+        for b in &obs.beams {
+            if b.kind == crate::proto::BeamKind::Laser {
+                if let Some(tr) = self.tracks.iter_mut().find(|x| x.id == b.by) {
+                    tr.laser_cd_until = t + 2.0;
+                }
             }
         }
 

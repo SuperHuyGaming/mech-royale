@@ -124,6 +124,11 @@ impl Brain {
         if t > p.sq_late_t {
             return true;
         }
+        // PracticeAware 1v1 duel commitment: in practice/squad matches, engage isolated enemies to snowball cubes!
+        let is_practice = !self.ffa.on || (self.ffa.alive0 - obs.alive <= 2);
+        if is_practice {
+            return true;
+        }
         let hpf = frac(obs.me.hp, obs.me.max_hp);
         let ttk = self.sq_ttk(obs, tr);
         let first_h = self.sq.hunters.first().map_or(f64::INFINITY, |h| h.1);
@@ -167,6 +172,11 @@ impl Brain {
     pub(crate) fn sq_avoid(&self, obs: &Obs) -> bool {
         let p = &self.p;
         if p.sq_on < 0.5 || p.sq_avoid_on < 0.5 || obs.t > p.sq_late_t {
+            return false;
+        }
+        // Do not passively avoid when healthy in 1v1 situations; commit to duel!
+        let hpf = frac(obs.me.hp, obs.me.max_hp);
+        if hpf > 0.45 {
             return false;
         }
         let t = obs.t;

@@ -211,7 +211,15 @@ impl Brain {
                 best = Some((s, f.eye));
             }
         }
-        best.map(|(_, e)| [(e[1] - pos[1]).atan2(e[0] - pos[0]), 0.0])
+        if let Some((_, e)) = best {
+            return Some([(e[1] - pos[1]).atan2(e[0] - pos[0]), 0.0]);
+        }
+        if let Some(u) = &self.mem.unseen {
+            if obs.t - u.t < 3.0 {
+                return Some([u.bearing, 0.0]);
+            }
+        }
+        None
     }
 
     pub(crate) fn hold_fire(&self, obs: &Obs, d: f64, hp: f64) -> bool {

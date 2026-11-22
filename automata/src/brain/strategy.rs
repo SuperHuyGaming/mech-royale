@@ -176,11 +176,16 @@ impl Brain {
                 near_mech = near_mech.min(dist(tr.pos, pos));
             }
         }
+        if let Some(u) = &self.mem.unseen {
+            if t - u.t < 2.5 {
+                n_att += 1;
+            }
+        }
         let threat_near = near_mech < 200.0 || t - self.mem.last_damage_t < 3.0;
         let laser_near = self.mem.tracks.iter().any(|tr| {
             tr.kind == ActorKind::Mech && t - tr.last_seen < 1.0 && tr.has(WeaponKind::Laser) && dist(tr.pos_at(t), pos) < 130.0 && world.sight(up(tr.pos_at(t), self.cfg.mech.eye_height), up(pos, me.stats.height * 0.6))
         });
-        let pressured = n_att >= 2 || (laser_near && t - self.mem.last_damage_t < 4.0);
+        let pressured = n_att >= 2 || (laser_near && t - self.mem.last_damage_t < 4.0) || (self.mem.unseen.as_ref().map_or(false, |u| t - u.t < 2.0) && t - self.mem.last_damage_t < 2.0 && n_att >= 1);
         let held = self.held(t);
         let tgt = if held { None } else if self.order_on() { self.choose_target_order(obs, &zi) } else { self.choose_target(obs, &zi) };
         let regen = self.sq_regen(obs);
@@ -202,7 +207,7 @@ impl Brain {
             }
         }
         if p.survive2_on >= 1.0 {
-            let disengage_hp = p.survive2_disengage_hp.clamp(0.35, 0.65);
+            let disengage_hp = p.survive2_disengage_hp.clamp(0.30, 0.65);
             let recent_dmg = t - self.mem.last_damage_t < 5.5;
             let is_endgame = (obs.alive <= 3) || (obs.zone.next_radius <= 25.0);
             if is_endgame {
@@ -210,8 +215,8 @@ impl Brain {
                     want_retreat = false;
                 }
             } else if was {
-                want_retreat = hpf < p.retreat_exit_hp || recent_dmg;
-            } else if hpf < disengage_hp || (recent_dmg && hpf < p.retreat_exit_hp) {
+                want_retreat = hpf < p.retreat_exit_hp;
+            } else if hpf < disengage_hp || (recent_dmg && (n_att >= 2 || pressured)) {
                 want_retreat = true;
             }
             if want_retreat {
@@ -365,7 +370,8 @@ impl Brain {
                 continue;
             }
             if p.survive2_on >= 1.0 && obs.alive > 3 && z.next_radius > 30.0 {
-                if !attacker && d > p.ffa_defend_range {
+                let isolated = self.sq.is_hunter(tr.id, t) || self.sq_allow(obs, tr);
+                if !attacker && !isolated && d > p.ffa_defend_range {
                     continue;
                 }
             }
@@ -380,6 +386,9 @@ impl Brain {
             let mut s = 60.0 * (1.0 - d / 200.0) + 80.0 * (1.0 - frac(tr.hp, tr.max_hp));
             if attacker {
                 s += 100.0 + tr.dmg_to_us * 0.1;
+            }
+            if tr.laser_cd_until > t {
+                s += 70.0;
             }
             if self.target == Tgt::Mech(tr.id) {
                 s += p.target_sticky;
@@ -623,7 +632,11 @@ impl Brain {
         if let Some((c, _)) = self.cover {
             consider(c, 10.0, &mut best);
         }
-        consider(pos, 6.0, &mut best);
+        // Only consider standing still at current position if no enemy eyes are within close range
+        let threat_dist = eyes.iter().map(|e| dist(*e, pos)).fold(f64::INFINITY, f64::min);
+        if threat_dist > 80.0 {
+            consider(pos, 6.0, &mut best);
+        }
         let t_act = self.t_act;
         for &r in &[12.0, 24.0, 40.0, 60.0] {
             if t_act.elapsed().as_secs_f64() > 0.010 {

@@ -309,6 +309,13 @@ if p.lz_cl > 0.5 && self.pk.st == PkSt::Off {
             eprintln!("LZ t={:.2} {:?}->{:?} pos={:.0?} hide={:.0?} peek={:.0?} hp={:.0}", obs.t, self.pk.last_st, self.pk.st, obs.me.pos, self.pk.hide, self.pk.peek, obs.me.hp);
         }
         self.pk.last_st = self.pk.st;
+        if self.mode == Mode::Retreat {
+            if let Some(ls) = self.laser_slot(obs) {
+                fc.fire[ls] = false;
+            }
+            self.pk.st = PkSt::Off;
+            return;
+        }
         if self.pk.st == PkSt::Off {
             return;
         }
