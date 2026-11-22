@@ -1,1 +1,23 @@
-{"salt": 0, "base": {"Ears": false, "EndGhost": 140}, "squad": {}}
+{
+  "salt": 0,
+  "base": {
+    "Ears": false,
+    "EndGhost": 240,
+    "RetreatHP": 0.48,
+    "RecoverHP": 0.82,
+    "FarmHP": 0.65,
+    "UseDrops": true,
+    "Finish": 25,
+    "FinishHP": 0.42,
+    "FinishRush": true
+  },
+  "squad": {
+    "RetreatHP": 0.48,
+    "RecoverHP": 0.82,
+    "FarmHP": 0.65,
+    "UseDrops": true,
+    "Finish": 25,
+    "FinishHP": 0.42,
+    "FinishRush": true
+  }
+}

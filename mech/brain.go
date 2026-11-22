@@ -367,9 +367,9 @@ func (b *Brain) observe(o *Obs) {
 		}
 	}
 
-	// End game in practice: when the circle gets small, stop fighting the whole
-	// squad and play the hiding game; the zone collapse ranks survivors by HP.
-	if b.pracOn && !b.endGhostOn && b.base.EndGhost > 0 && o.Zone.NextRadius <= b.base.EndGhost {
+	// End game: when the circle gets small, stop fighting and play the hiding game;
+	// the zone collapse ranks survivors by HP.
+	if !b.endGhostOn && b.base.EndGhost > 0 && o.Zone.NextRadius <= b.base.EndGhost {
 		b.endGhostOn = true
 		b.P = b.base
 		b.P.Practice = false
@@ -431,7 +431,7 @@ func (b *Brain) zonePenalty(z *Zone, x, y float64) float64 {
 }
 
 func (b *Brain) zoneGoal(z *Zone, x, y float64) (float64, float64) {
-	margin := clamp(0.3*z.NextRadius, 3, 30)
+	margin := clamp(0.35*z.NextRadius, 6, 35)
 	if z.NextRadius <= 30 {
 		return z.NextCenter[0], z.NextCenter[1]
 	}
@@ -440,7 +440,7 @@ func (b *Brain) zoneGoal(z *Zone, x, y float64) (float64, float64) {
 	if d < 1 {
 		return x, y
 	}
-	r := math.Max(0, z.NextRadius-margin-5)
+	r := math.Max(0, z.NextRadius-margin-8)
 	if d <= r {
 		return x, y
 	}
@@ -566,7 +566,7 @@ func (b *Brain) step(o *Obs, act *Action) {
 		case b.P.Ghost:
 
 			t.Engage = t.Dist < b.P.EngageDist || now-t.HitMe < 4 || (aimed && t.Charging && t.Dist < 120) ||
-				(t.HP < 350 && t.Dist < 120) || o.Alive <= 2
+				(t.HP < 350 && t.Dist < 120) || o.Alive <= 3
 			off := math.Abs(angDiff(t.Aim[0], toMe))
 
 			if b.P.Vulture > 0 && hpFrac > 0.75 && t.HP < b.P.Vulture*t.MaxHP && off > 0.6 && t.Dist < 165 {
@@ -708,9 +708,9 @@ func (b *Brain) step(o *Obs, act *Action) {
 	zgx, zgy := b.zoneGoal(z, x, y)
 	zdist := hyp(zgx-x, zgy-y)
 	tNeed := zdist*1.45/st.WalkSpeed + 4
-	deadline := b.zoneDeadline(z, x, y, 8)
-	zoneMust := !me.InZone || now+tNeed+3 >= deadline
-	zoneShould := now+tNeed+14 >= deadline
+	deadline := b.zoneDeadline(z, x, y, 12)
+	zoneMust := !me.InZone || now+tNeed+5 >= deadline
+	zoneShould := now+tNeed+16 >= deadline
 
 	escJump := false
 	switch {
@@ -726,7 +726,7 @@ func (b *Brain) step(o *Obs, act *Action) {
 		mx, my = b.travel(me, zgx, zgy)
 		boost = (!me.InZone || now+tNeed >= deadline) && me.Energy > 5
 		mode = "zone"
-	case b.retreat && !finishing && !late:
+	case b.retreat && !finishing && (!late || hpFrac < 0.22):
 		if b.coverMove(o, seen, &mx, &my) {
 			boost = me.Energy > 10 && (mx != 0 || my != 0)
 			mode = "cover"
@@ -783,11 +783,16 @@ func (b *Brain) step(o *Obs, act *Action) {
 		if b.P.FinishHP > 0 {
 			finHP = b.P.FinishHP
 		}
-		if keep := b.P; b.P.Finish > 0 && foe.HP < finHP*foe.MaxHP && hpFrac > 0.42 && crowd <= 2 {
-			b.P.GunRange, b.P.LaserRange, b.P.LightRange = b.P.Finish, b.P.Finish, b.P.Finish
+		endgameAggr := o.Alive <= 3 && hpFrac > 0.35
+		if keep := b.P; (b.P.Finish > 0 && foe.HP < finHP*foe.MaxHP && hpFrac > 0.42 && crowd <= 2) || endgameAggr {
+			finishDist := b.P.Finish
+			if finishDist <= 0 {
+				finishDist = 25
+			}
+			b.P.GunRange, b.P.LaserRange, b.P.LightRange = finishDist, finishDist, finishDist
 			mx, my = b.fightMove(o, foe, seen, wantLos)
 			b.P = keep
-			if b.P.FinishRush && foe.Dist > 2*b.P.Finish && me.Energy > 30 {
+			if (b.P.FinishRush || endgameAggr) && foe.Dist > 2*finishDist && me.Energy > 25 {
 				boost = true
 			}
 		} else {
@@ -1717,8 +1722,21 @@ func (b *Brain) chooseLoot(o *Obs, hpFrac float64, danger bool) *lootChoice {
 		}
 		for i := range o.Drops {
 			d := &o.Drops[i]
-			if b.P.UseDrops && !hurt && hyp(d.Pos[0]-x, d.Pos[1]-y)/me.Stats.WalkSpeed < d.LandsIn+25 {
-				consider("drop", d.ID, d.Pos, 170)
+			dist := hyp(d.Pos[0]-x, d.Pos[1]-y)
+			if b.P.UseDrops && !hurt && dist/me.Stats.WalkSpeed < d.LandsIn+25 {
+				uncontested := true
+				for _, t := range b.tracks {
+					if now-t.Seen < 12 {
+						dFoe := hyp(t.Pos[0]-d.Pos[0], t.Pos[1]-d.Pos[1])
+						if dFoe < 75 || dFoe < dist*0.9 {
+							uncontested = false
+							break
+						}
+					}
+				}
+				if uncontested {
+					consider("drop", d.ID, d.Pos, 170)
+				}
 			}
 		}
 		if best == nil {
@@ -1765,10 +1783,17 @@ func (b *Brain) chooseLoot(o *Obs, hpFrac float64, danger bool) *lootChoice {
 	if b.P.FarmHP > 0 {
 		farmHP = b.P.FarmHP
 	}
-	if hpFrac > farmHP && !danger && now < b.P.CrateUntil {
+	enemyNear := false
+	for _, t := range b.tracks {
+		if now-t.Seen < 3 && (t.Dist < 120 || (t.LOS && t.Dist < 180)) {
+			enemyNear = true
+			break
+		}
+	}
+	if hpFrac > farmHP && !danger && !enemyNear && now < b.P.CrateUntil {
 		for _, c := range b.crates {
 			if hyp(c.Pos[0]-x, c.Pos[1]-y) < b.P.LootRadius {
-				consider("crate", c.ID, c.Pos, cubeV*0.6)
+				consider("crate", c.ID, c.Pos, cubeV*0.8)
 			}
 		}
 		if b.P.FarmNPC && me.Cubes < b.cubeCap() {
@@ -1783,7 +1808,19 @@ func (b *Brain) chooseLoot(o *Obs, hpFrac float64, danger bool) *lootChoice {
 		d := &o.Drops[i]
 		dist := hyp(d.Pos[0]-x, d.Pos[1]-y)
 		if b.P.UseDrops && dist/me.Stats.WalkSpeed < d.LandsIn+25 && !danger {
-			consider("drop", d.ID, d.Pos, 260)
+			uncontested := true
+			for _, t := range b.tracks {
+				if now-t.Seen < 12 {
+					dFoe := hyp(t.Pos[0]-d.Pos[0], t.Pos[1]-d.Pos[1])
+					if dFoe < 75 || dFoe < dist*0.9 {
+						uncontested = false
+						break
+					}
+				}
+			}
+			if uncontested {
+				consider("drop", d.ID, d.Pos, 260)
+			}
 		}
 	}
 	if best == nil {

@@ -80,6 +80,9 @@ func main() {
 					dir = "/arena"
 				}
 				w, err := mech.LoadWorld(dir)
+				if err != nil && dir != "/arena" {
+					w, err = mech.LoadWorld("/arena")
+				}
 				if err != nil {
 					fmt.Fprintln(os.Stderr, "map:", err, "- playing on a flat map")
 					w = mech.FlatWorld()
