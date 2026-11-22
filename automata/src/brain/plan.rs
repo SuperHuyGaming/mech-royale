@@ -83,11 +83,13 @@ impl Brain {
         }
         let w = &self.cfg.weapons;
         let mut s = 0.0;
+        let model = p.thr_model > 0.0;
+        let squad = model && self.squad_mode();
         if th.gun && d < w.gun.range {
-            s += p.gun_dps * (1.15 - d / 220.0).clamp(0.2, 1.0);
+            s += if model { p.gun_dps * super::duel::gun_hit(squad, d) } else { p.gun_dps * (1.15 - d / 220.0).clamp(0.2, 1.0) };
         }
         if th.laser && d < w.laser.range {
-            s += p.laser_dps;
+            s += if model { p.laser_dps * super::duel::laser_hit(squad, d) / super::duel::LASER_REF } else { p.laser_dps };
         }
         if th.lightning && d < w.lightning.range + 6.0 {
             s += p.lightning_dps;
@@ -409,7 +411,7 @@ impl Brain {
         // juke axis
         let mut juke: Option<V2> = None;
         for th in &threats {
-            if th.ghost || !th.los_now || !(th.gun || th.mortar) || th.dist < p.juke_min_dist {
+            if th.ghost || !th.los_now || !(th.gun || th.mortar) || th.dist < p.juke_min_dist || (p.juke_max_dist > 0.0 && th.dist > p.juke_max_dist) {
                 continue;
             }
             let to_us = (center[1] - th.eye[1]).atan2(center[0] - th.eye[0]);
@@ -462,7 +464,13 @@ impl Brain {
         } else {
             p.energy_reserve
         };
-        let allow_boost = me.grounded && me.energy > reserve && (matches!(self.mode, Mode::Zone | Mode::Retreat | Mode::Drop | Mode::Roof) || under_fire || !me.in_zone);
+        let kite_boost = self.stand_off
+            && p.mx_boost > 0.0
+            && match self.goal {
+                Goal::Range { pos: g, pref } => dist2(pos, g) < pref - p.range_band - p.mx_boost,
+                _ => false,
+            };
+        let allow_boost = me.grounded && me.energy > reserve && (matches!(self.mode, Mode::Zone | Mode::Retreat | Mode::Drop | Mode::Roof) || under_fire || !me.in_zone || kite_boost);
         let slow = if fc.charging { st.charge_move_mult.clamp(0.1, 1.0) } else { 1.0 };
 
         // candidates
@@ -490,6 +498,12 @@ impl Brain {
             Mode::Loot | Mode::Hunt => p.w_progress_loot,
             Mode::Drop => p.w_progress_drop,
             Mode::Fight => p.w_progress_fight,
+        };
+        let full_r = self.cfg.cubes.pickup_radius + 1.0;
+        let avoid: Vec<V3> = if p.cube_avoid > 0.0 && me.cubes >= p.cube_avoid {
+            self.mem.cubes.iter().filter(|c| dist2(c.pos, pos) < 30.0 && (c.pos[2] - pos[2]).abs() < 6.0).map(|c| c.pos).collect()
+        } else {
+            Vec::new()
         };
         let (zc, zr) = zone_at(&obs.zone, t, t + horizon, self.zone_b);
         let z = &obs.zone;
@@ -521,7 +535,9 @@ impl Brain {
                 Goal::Range { pos: g, pref } => {
                     let e0 = ((dist2(pos, g) - pref).abs() - p.range_band).max(0.0);
                     let e1 = ((dist2(end, g) - pref).abs() - p.range_band).max(0.0);
-                    s += p.w_range * (e0 - e1);
+                    // opening the distance comes before the side step while the target is inside the stand-off distance
+                    let wr = if self.stand_off && dist2(pos, g) < pref - p.range_band { p.w_range * p.mx_w_back } else { p.w_range };
+                    s += wr * (e0 - e1);
                 }
                 Goal::None => {
                     s -= 0.6 * dist2(end, pos);
@@ -561,6 +577,11 @@ impl Brain {
                 let d = dist(*q, end);
                 if d < p.npc_avoid {
                     s -= p.w_npc * (p.npc_avoid - d) * 0.2 + p.w_npc * (dist(*q, pos) - d).max(0.0);
+                }
+            }
+            for q in &avoid {
+                if c.pts.iter().any(|pt| dist2(*pt, *q) < full_r && (pt[2] - q[2]).abs() < 4.5) {
+                    s -= p.w_cube_avoid;
                 }
             }
             s -= p.w_proj * self.incoming_cost(c, &shots, &blasts, radius, height);
