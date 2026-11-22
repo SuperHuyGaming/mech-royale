@@ -20,5 +20,8 @@
   "retreat_hp": 0.5,
   "rest_on": true,
   "zone_margin": 28,
-  "ffa_early_quiet_range": 55
+  "ffa_early_quiet_range": 55,
+  "sf_nofirst": 1,
+  "sf_harm": 1,
+  "gear_late_s": 120
 }
