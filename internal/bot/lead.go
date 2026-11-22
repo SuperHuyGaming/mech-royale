@@ -122,5 +122,16 @@ func (b *Bot) gunLead(tr *Track) float64 {
 			return 1 // it walks: lead it fully whatever its last second looked like
 		}
 	}
+	if b.P.LeadIMM && b.ffa && tr.leadN >= 3 {
+		sig := 2.5 * tr.scale(b.sizePerCube)
+		mN, mL := tr.missNone/tr.leadN, tr.missLead/tr.leadN
+		lN := math.Exp(-mN * mN / (2 * sig * sig))
+		lL := math.Exp(-mL * mL / (2 * sig * sig))
+		w := 0.5
+		if lN+lL > 1e-9 {
+			w = lL / (lN + lL)
+		}
+		return 0.5*w + 0.5*b.leadPersistAt(tr, b.t)
+	}
 	return b.leadPersistAt(tr, b.t)
 }

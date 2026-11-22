@@ -91,7 +91,7 @@ func (b *Bot) belief() stance {
 		b.ffa = true
 	}
 	switch {
-	case alive <= 2:
+	case alive <= 2 || (b.P.DuelAt > 2 && alive <= b.P.DuelAt && b.ffa):
 		// second place is banked: nothing to lose by fighting for first
 		return stance{name: "duel", engageRatio: 0.0, disengage: 0.45, hunt: true, lootRadius: 150, wantCubes: 40}
 	case b.ffa && b.P.PracticeAware:

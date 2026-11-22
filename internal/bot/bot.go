@@ -38,6 +38,10 @@ type Params struct {
 	FFAWantCubes  int
 	FFAReturnFire float64 // only shoot back at attackers closer than this
 	Salt          int     // changes the dice only (see New)
+	OppModel      bool    // FFA: calibrate each enemy's threat online from actual damage dealt (UCB)
+	OppPrior      float64 // prior strength in damage points
+	LeadIMM       bool    // FFA: IMM-style soft blend of lead/no-lead aim models by miss likelihood
+	DuelAt        int     // FFA: switch to all-in duel stance at this many alive
 	ForceFFA      bool    // testing: assume a free-for-all from the start
 	SlotRule      bool    // WRONG, never enable: the track page says the practice slot varies each match
 	CloseDisengage float64 // disengage threshold against an attacker within ~60 m (stealth stances)
@@ -178,7 +182,7 @@ type Params struct {
 func DefaultParams() Params {
 	return Params{
 		Name:          "GMUNVIS",
-		EngageRatio:   1.25,
+		EngageRatio:   0.90,
 		DisengageRat:  0.75,
 		RetreatHP:     0.45,
 		ReturnHP:      0.85,
@@ -277,28 +281,37 @@ func DefaultParams() Params {
 		LootBoost:         30,
 		ProvokeRule:       true,
 		PlinkMaxDPS:       60,
-		HuntRange:         130,
-		HuntRangeLaser:    130,
+		HuntRange:         180,
+		HuntRangeLaser:    200,
 		KiteMin:        130,
 		KiteMax:        190,
 		PatientCubes:   10,
 		PatientRange:   70,
+		Jink:           0.55,
 		// Apex-Go v2 verified winners (#1 6.28 official; 4.70 192m grand; 8.35 FFA)
 		AntiLightningW:   180,
 		AntiLightningPad: 12,
 		SmartFireV2:      true,
 		LaserEarlyRel:    true,
-		RearBonus:        0.25,
+		RearBonus:        0.35,
 		CookoffBonus:     0.30,
 		CautiousT:        265,
 		BeamFFA:          true,
+		OppModel:         true,
+		OppPrior:         250,
+		LeadIMM:          true,
+		DuelAt:           3,
 		FinalHold:        true,
-		// Apex-Go v3 verified winners (4.99 192m grand, 6.00 TR_HK1, 9,070 dealt, 3.87x trade, 8 alive wins)
+		LightKiteBoost:   true,
+		// Apex-Go v3 + top-board verified practice/FFA winners
 		LaserCDTrack: true,
-		RearAvoidW:   35,
+		RearAvoidW:   60,
 		CoverReload:  true,
 		RetreatPest:  true,
 		PracticeRim:  0.6,
+		CubeSmart:    true,
+		KillFocus:    2.0,
+		Seek:         30,
 	}
 }
 
@@ -328,9 +341,12 @@ type Track struct {
 	SeenT0   float64
 	PhantomT float64 // last time it hit us while unseen (its Pos is then a guess along the bearing)
 	WasListed bool   // listed in the previous observation
-	ViewT    float64 // last time it was inside our own field of view (not just remembered)
-	EngT     float64 // last time it counted as engaged with us
+	ViewT       float64 // last time it was inside our own field of view (not just remembered)
+	EngT        float64 // last time it counted as engaged with us
+	obsDmg, predDmg float64 // OppModel: observed vs predicted damage while in LOS
 	LaserFiredT float64 // last time we saw this mech fire a laser beam (for cooldown punish window)
+	DropT       float64 // last time its HP dropped
+	OtherHurtT  float64 // last time its HP dropped without a hit of ours (FFA vulture)
 
 	// recent motion, for choosing how to lead it (see lead.go)
 	hist            [trkHist]trkSample
@@ -437,6 +453,8 @@ type Bot struct {
 	lastDmgBy    int
 	lastSoundT   float64
 	lastSoundB   float64
+	laserChargeT float64
+	laserChargeB float64
 
 	// movement state
 	path       []int32
@@ -458,6 +476,7 @@ type Bot struct {
 	mode       string
 	targetID   int
 	retreating bool
+	healing    bool
 	coverCell  int
 	coverT     float64
 	deepCell   int     // retreat: the next place deeper into cover we are walking to (-1 none)
@@ -659,6 +678,14 @@ func (b *Bot) trace(act *proto.Action) {
 func (b *Bot) Act(o *proto.Obs) proto.Action {
 	act := proto.NewAction(o.Tick)
 	b.observe(o)
+	if b.P.OppModel && b.ffa {
+		for _, tr := range b.tracks {
+			if tr.NPC || !tr.Listed || !tr.LOS {
+				continue
+			}
+			tr.predDmg += b.theirDPSRaw(tr, dist2(b.pos, tr.Pos)) * (1 - b.armor) * b.decide
+		}
+	}
 	b.think(&act)
 	if Trace {
 		b.trace(&act)
@@ -858,6 +885,9 @@ func (b *Bot) observe(o *proto.Obs) {
 		}
 		tr.Pos, tr.Vel, tr.Aim = m.Pos, m.Vel, m.Aim
 		if m.MaxHP > 0 {
+			if tr.MaxHP > 0 && m.HP < tr.HP-1 {
+				tr.DropT = b.t
+			}
 			tr.HP, tr.MaxHP = m.HP, m.MaxHP
 		} else if tr.MaxHP == 0 {
 			tr.HP, tr.MaxHP = 1400, 1400
@@ -983,6 +1013,9 @@ func (b *Bot) observe(o *proto.Obs) {
 					}
 					tr.HurtMeT = b.t
 					tr.HurtMe += e.Amount
+					if !tr.NPC {
+						tr.obsDmg += e.Amount
+					}
 					if Stats {
 						d := -1.0
 						if tr.Listed {
@@ -997,6 +1030,44 @@ func (b *Bot) observe(o *proto.Obs) {
 						tr.Mortar = true
 					case "lightning":
 						tr.Light = true
+					}
+				} else if e.By == nil && e.Bearing != nil {
+					// Unattributed weapon damage: match along bearing to a known track, or place a phantom threat
+					var matched *Track
+					bestOff := 0.45
+					for _, tr := range b.tracks {
+						if tr.NPC || b.t-tr.LastSeen > 6 {
+							continue
+						}
+						bear := math.Atan2(tr.Pos[1]-b.pos[1], tr.Pos[0]-b.pos[0])
+						if off := math.Abs(angDiff(*e.Bearing, bear)); off < bestOff {
+							bestOff = off
+							matched = tr
+						}
+					}
+					if matched != nil {
+						matched.HurtMeT = b.t
+						matched.HurtMe += e.Amount
+						matched.obsDmg += e.Amount
+					} else {
+						const phantomID = -100
+						tr := b.tracks[phantomID]
+						if tr == nil {
+							tr = &Track{ID: phantomID, HurtMeT: -100, IHurtT: -100, AimAtMeT: -100, LOST: -100, SeenT0: b.t, LastSeen: -100, HP: 1400, MaxHP: 1400, PhantomT: -100, ViewT: -100, EngT: -100}
+							b.tracks[phantomID] = tr
+						}
+						guess := 115.0
+						switch e.Weapon {
+						case "laser":
+							guess = 150
+						case "lightning":
+							guess = 35
+						}
+						tr.Pos = [3]float64{b.pos[0] + math.Cos(*e.Bearing)*guess, b.pos[1] + math.Sin(*e.Bearing)*guess, b.pos[2]}
+						tr.Vel = [3]float64{}
+						tr.PhantomT = b.t
+						tr.HurtMeT = b.t
+						tr.HurtMe += e.Amount
 					}
 				}
 			}
@@ -1027,6 +1098,11 @@ func (b *Bot) observe(o *proto.Obs) {
 			}
 		}
 	}
+	for _, tr := range b.tracks {
+		if !tr.NPC && tr.DropT == b.t && tr.IHurtT != b.t {
+			tr.OtherHurtT = b.t
+		}
+	}
 
 	// items
 	b.foldItems(o.Crates, b.crates, "crate")
@@ -1053,6 +1129,10 @@ func (b *Bot) observe(o *proto.Obs) {
 			if sd.Dist != "far" {
 				b.lastSoundT = b.t - sd.Age
 				b.lastSoundB = sd.Bearing
+			}
+			if sd.Kind == "laser_charge" {
+				b.laserChargeT = b.t - sd.Age
+				b.laserChargeB = sd.Bearing
 			}
 		}
 	}

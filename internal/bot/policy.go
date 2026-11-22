@@ -82,6 +82,9 @@ func (b *Bot) think(act *proto.Action) {
 		if b.P.CookoffBonus > 0 && b.has("laser") >= 0 && th.tr.Mortar && stat(b.C.Weapons["laser"], "cookoff", 0) > 0 {
 			s *= 1 + b.P.CookoffBonus
 		}
+		if b.ffa && b.t-th.tr.OtherHurtT < 4 {
+			s *= 1.6
+		}
 		if b.P.ThreatFocus {
 			if th.tr.Light && th.d < stat(b.C.Weapons["lightning"], "range", 45)+35 {
 				s *= 1.25
@@ -106,6 +109,11 @@ func (b *Bot) think(act *proto.Action) {
 	// --- fight or flight
 	underFire := b.t-b.lastWeaponDT < 3.0
 	danger := nEngaged > 0 || underFire
+	if danger || len(watchers) > 0 || hpFrac >= 0.97 {
+		b.healing = false
+	} else if hpFrac < 0.80 && b.t-b.lastEnemyLOST > 5.5 && b.t-b.lastWeaponDT > 5.5 {
+		b.healing = true
+	}
 	overall := 10.0
 	if engagedDPS > 1 {
 		// can we out-trade everyone who is on us, taking them one at a time
@@ -735,7 +743,7 @@ func (b *Bot) think(act *proto.Action) {
 		} else {
 			setGoal(zi.goal[0], zi.goal[1], 1.5, false)
 		}
-		if st.stealth && tgt != nil && tgt.d > b.P.FFAReturnFire {
+		if (st.stealth && tgt != nil && tgt.d > b.P.FFAReturnFire) || (tgt != nil && tgt.d > 75 && hpFrac < 0.55) {
 			holdFire = true
 		}
 
@@ -1059,9 +1067,13 @@ func (b *Bot) think(act *proto.Action) {
 	case shootItem != nil:
 		b.engage(act, *shootItem, true, true, shootHP, true)
 	case tgt != nil && (tgt.tr.LOS || b.t-tgt.tr.LastSeen < 3):
-		// watch it without provoking
+		// watch it without provoking (also keeps front armor facing threat when holding fire during retreat)
 		at := b.targetOf(tgt.tr)
 		b.engage(act, at, tgt.tr.LOS, false, tgt.tr.HP, false)
+	case (b.retreating || slip) && b.t-b.lastWeaponDT < 4.5:
+		// keep front armor (1.0x vs 1.5x rear) oriented toward recent damage bearing while retreating
+		act.Aim = [2]float64{b.lastDmgBear, 0}
+		act.HasAim = true
 	default:
 		b.idleAim(act, heading, haveHeading)
 		// top up the magazine while nothing is happening

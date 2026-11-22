@@ -441,6 +441,9 @@ func (b *Bot) idleAim(act *proto.Action, heading float64, haveHeading bool) {
 		yaw = b.aim[0] + 0.39
 	case b.t-b.lastWeaponDT < 2.5 || b.t-b.lastNpcDT < 2.5:
 		yaw = b.lastDmgBear
+	case b.laserChargeT > 0 && b.t-b.laserChargeT < 1.0:
+		// someone unseen nearby is charging a laser: take it on front armor (1.0x vs 1.5x rear)
+		yaw = b.laserChargeB
 	case b.t-b.lastSoundT < 1.5:
 		yaw = b.lastSoundB
 	default:
@@ -580,6 +583,18 @@ func (b *Bot) myDPS(d float64) float64 {
 }
 
 func (b *Bot) theirDPS(tr *Track, d float64) float64 {
+	raw := b.theirDPSRaw(tr, d)
+	if b.P.OppModel && b.ffa && !tr.NPC {
+		return raw * tr.oppFactor(b.P.OppPrior)
+	}
+	return raw
+}
+
+func (tr *Track) oppFactor(prior float64) float64 {
+	return clamp((tr.obsDmg+prior)/(tr.predDmg+prior), 1.0, 2.5)
+}
+
+func (b *Bot) theirDPSRaw(tr *Track, d float64) float64 {
 	if tr.NPC {
 		if d > 95 {
 			return 0
@@ -593,8 +608,8 @@ func (b *Bot) theirDPS(tr *Track, d float64) float64 {
 		if li := b.has("lightning"); li >= 0 && b.energy > 20 && d < stat(b.slots[li].stats, "range", 45)-3 {
 			laser = false
 		}
-		// LaserCDTrack: in practice, enemy laser just fired -> on cooldown + charge for ~2.05 s (punish window!)
-		if laser && b.P.LaserCDTrack && !b.ffa && !tr.Charging && tr.LaserFiredT > 0 {
+		// LaserCDTrack: enemy laser just fired -> on cooldown + charge for ~2.05 s (punish window in both practice and FFA)
+		if laser && b.P.LaserCDTrack && !tr.Charging && tr.LaserFiredT > 0 {
 			cdWin := stat(b.C.Weapons["laser"], "cooldown", 1.65) + stat(b.C.Weapons["laser"], "charge", 0.75) - 0.40
 			if b.t-tr.LaserFiredT < cdWin {
 				laser = false

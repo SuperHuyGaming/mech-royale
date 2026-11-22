@@ -105,7 +105,7 @@ func (b *Bot) zoneInfo() zoneInfo {
 		}
 	}
 	zi.critical = zi.outCur > -2 || zi.tPass < 2.5
-	zi.urgent = zi.critical || zi.tPass < 9 || (zi.outNext > 0 && z.ShrinkEnd-b.t < need) || (zi.outNext > 0 && zi.tPass-need < 3)
+	zi.urgent = zi.critical || zi.tPass < 10.5 || (zi.outNext > 0 && z.ShrinkEnd-b.t < need) || (zi.outNext > 0 && zi.tPass-need < 4.0)
 	return zi
 }
 
@@ -520,11 +520,11 @@ func (b *Bot) chooseLoot(danger bool, st stance) *loot {
 		}
 		for _, it := range b.crates {
 			// roof crates can still be shot from the ground, but the cube stays up there: skip them
-			if it.Ground {
+			if it.Ground && !b.healing {
 				consider(loot{kind: "crate", id: it.ID, pos: it.Pos, shoot: true}, 7*threshMult(1), 2.5)
 			}
 		}
-		if !danger {
+		if !danger && !b.healing {
 			for _, tr := range b.tracks {
 				if tr.NPC && b.t-tr.LastSeen < 20 {
 					k := b.Nav.Index(tr.Pos[0], tr.Pos[1])
@@ -555,10 +555,13 @@ func (b *Bot) chooseLoot(danger bool, st stance) *loot {
 			// it for the repair alone
 			continue
 		}
-		if dr.Holder != nil && *dr.Holder != b.o.Self.ID && st.stealth {
+		if dr.Holder != nil && *dr.Holder != b.o.Self.ID && (st.stealth || st.avoid) {
 			continue // someone is already on it
 		}
 		if st.stealth && b.enemyNear(dr.Pos, 110) {
+			continue
+		}
+		if st.avoid && b.enemyNear(dr.Pos, 75) {
 			continue
 		}
 		v := 30.0 * b.P.DropGreed * 2
