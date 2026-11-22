@@ -177,7 +177,7 @@ type Params struct {
 
 func DefaultParams() Params {
 	return Params{
-		Name:          "ohio-ironclad",
+		Name:          "GMUNVIS",
 		EngageRatio:   0.9,
 		DisengageRat:  0.75,
 		RetreatHP:     0.45,
