@@ -17,11 +17,11 @@
   "gear_cube_fight_r": 20,
   "gear_grab_r": 40,
   "gear_pursuit_s": 12,
-  "retreat_hp": 0.55,
+  "retreat_hp": 0.6,
   "rest_on": true,
-  "zone_margin": 35,
-  "ffa_early_quiet_range": 75,
+  "zone_margin": 45,
+  "ffa_early_quiet_range": 90,
   "sf_nofirst": 1,
   "sf_harm": 1,
-  "gear_late_s": 120
+  "gear_late_s": 90
 }
