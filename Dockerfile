@@ -1,13 +1,17 @@
-FROM rust:1.95@sha256:f49565f188ee00bc2a18dd418183f2c5f23ef7d6e691890517ed341a598f67c3 AS build
+# Build stage (pinned rust version for reproducible linux/amd64 finalist rebuilds)
+FROM rust:1.88-slim-bookworm AS builder
 WORKDIR /src
-COPY automata/ .
-RUN cargo build --release --locked \
- && install -m 0755 target/release/automata /automata
 
-FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
-COPY --from=build --chmod=0755 /automata /usr/local/bin/automata
-COPY --chmod=0644 automata/bot.json /bot.json
-ENV MECH_PARAMS=/bot.json
-USER 65534:65534
-WORKDIR /tmp
-ENTRYPOINT ["/usr/local/bin/automata"]
+# Cache dependencies first
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir -p src && echo 'fn main() {}' > src/main.rs && cargo build --release --locked && rm -rf src
+
+# Build actual bot
+COPY src ./src
+RUN touch src/main.rs && cargo build --release --locked
+
+# Minimal runtime image (uid 65534 compatible, no network, read-only FS)
+FROM debian:bookworm-slim
+COPY --from=builder /src/target/release/mech-royale /usr/local/bin/mech-royale
+RUN chmod 0755 /usr/local/bin/mech-royale
+ENTRYPOINT ["/usr/local/bin/mech-royale"]

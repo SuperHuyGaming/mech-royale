@@ -1,3 +1,5 @@
-# GMUNVIS Mech Royale bot
+<img src="assets/icon.svg" width="64" height="64" alt="">
 
-The submitted image (`Dockerfile`) runs the Rust bot in `automata/`. An earlier Go bot is in `giddy/` (build with `docker build -f giddy/Dockerfile.giddy .`), and our first Python bot is in `legacy/`.
+# Mech royale
+
+Created in [T3 Code](https://t3.codes).

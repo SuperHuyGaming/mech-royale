@@ -1,0 +1,6 @@
+.work/
+target/
+*.tar.gz
+__pycache__/
+*.pyc
+.DS_Store
