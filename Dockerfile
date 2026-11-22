@@ -1,10 +1,13 @@
-FROM scratch AS z0
-ADD app.tar.gz /z/
-FROM python:3.13-slim
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONHASHSEED=0
-WORKDIR /bot
-COPY --from=z0 /z/1/ ./
-COPY --from=z0 /z/2/ ./
-COPY --from=z0 /z/r/1 /.z
-RUN . /.z && { rm -f /.z 2>/dev/null; :; }
-ENTRYPOINT ["python3", "-u", "/bot/bot.py"]
+# Build stage: Go toolchain pinned by digest (finalists are rebuilt)
+FROM golang:1.26.1-bookworm@sha256:ab3d6955bbc813a0f3fdf220c1d817dd89c0b3f283777db8ece4a32fe7858edd AS build
+WORKDIR /src
+COPY go.mod ./
+COPY mech ./mech
+COPY cmd ./cmd
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /pilot ./cmd/bot
+
+# Runtime: static binary only
+FROM scratch
+COPY --from=build /pilot /bot/pilot
+USER 65534:65534
+ENTRYPOINT ["/bot/pilot"]
