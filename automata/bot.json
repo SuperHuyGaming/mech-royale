@@ -23,5 +23,7 @@
   "ffa_early_quiet_range": 90,
   "sf_nofirst": 1,
   "sf_harm": 1,
-  "gear_late_s": 90
+  "gear_late_s": 90,
+  "w_expo": 1.0,
+  "expo_zone": 0.8
 }
